@@ -1,0 +1,6 @@
+python inference.py \
+--kitti_dir /media/edmundlylee/ED/kitti-raw-uncompressed \
+--output_dir ~/Documents/GitHub/comp6411B-study-on-vid2depth/inference \
+--output_file ~/Documents/GitHub/comp6411B-study-on-vid2depth/inference/kitti_eigen_depth_predictions.npy \
+--kitti_video 2011_09_26/2011_09_26_drive_0009_sync \
+--model_ckpt ~/Documents/GitHub/comp6411B-study-on-vid2depth/trained-model/model-119496

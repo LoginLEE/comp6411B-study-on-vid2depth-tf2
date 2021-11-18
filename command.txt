@@ -1,0 +1,18 @@
+python3 ./inference.py \
+  --kitti_dir /media/edmundlylee/ED/kitti-raw-uncompressed \
+  --output_dir ~/Documents/GitHub/comp6411B-study-on-vid2depth-tf2/inference \
+  --kitti_video 2011_09_26/2011_09_26_drive_0009_sync \
+  --model_ckpt ~/Documents/GitHub/comp6411B-study-on-vid2depth-tf2/trained-model/model-119496
+
+python3 ./inference.py \
+  --kitti_dir /media/edmundlylee/ED/kitti-raw-uncompressed \
+  --output_dir ~/Documents/GitHub/comp6411B-study-on-vid2depth-tf2/inference \
+  --output_file ~/Documents/GitHub/comp6411B-study-on-vid2depth-tf2/inference/kitti_eigen_depth_predictions.npy \
+  --kitti_video test_files_eigen \
+  --model_ckpt ~/Documents/GitHub/comp6411B-study-on-vid2depth-tf2/trained-model/model-119496
+
+
+python3 kitti_eval/eval_depth.py \
+    --kitti_dir=/media/edmundlylee/ED/kitti-raw-uncompressed/ \
+    --pred_file=/home/edmundlylee/Documents/GitHub/comp6411B-study-on-vid2depth-tf2/inference/kitti_eigen_depth_predictions.npy \
+    --test_file_list=./dataset/kitti/test_files_eigen.txt

@@ -25,6 +25,14 @@ import tensorflow as tf
 import tf_slim as slim
 import util
 
+from resnet_v2 import resnet_v2_50
+
+# 0: default, 1:deeper, 2:wider
+ENABLE_EGO_NETWORK = 0
+
+# 0: default, 1: deeper, 2:wider
+ENABLE_DISP_NETWORK = 0
+
 
 # TODO(rezama): Move flag to main, pass as argument to functions.
 flags.DEFINE_bool('use_bn', True, 'Add batch norm layers.')
@@ -88,28 +96,121 @@ def egomotion_net(image_stack, is_training=True, legacy_mode=False):
                         normalizer_params=normalizer_params,
                         activation_fn=tf.nn.relu,
                         outputs_collections=end_points_collection):
-      cnv1 = slim.conv2d(image_stack, 16, [7, 7], stride=2, scope='cnv1')
-      cnv2 = slim.conv2d(cnv1, 32, [5, 5], stride=2, scope='cnv2')
-      cnv3 = slim.conv2d(cnv2, 64, [3, 3], stride=2, scope='cnv3')
-      cnv4 = slim.conv2d(cnv3, 128, [3, 3], stride=2, scope='cnv4')
-      cnv5 = slim.conv2d(cnv4, 256, [3, 3], stride=2, scope='cnv5')
 
-      # Ego-motion specific layers
-      with tf.compat.v1.variable_scope('pose'):
-        cnv6 = slim.conv2d(cnv5, 256, [3, 3], stride=2, scope='cnv6')
-        cnv7 = slim.conv2d(cnv6, 256, [3, 3], stride=2, scope='cnv7')
+      
+      if ENABLE_EGO_NETWORK == 0:               
+        cnv1 = slim.conv2d(image_stack, 16, [7, 7], stride=2, scope='cnv1')
+        cnv2 = slim.conv2d(cnv1, 32, [5, 5], stride=2, scope='cnv2')
+        cnv3 = slim.conv2d(cnv2, 64, [3, 3], stride=2, scope='cnv3')
+        cnv4 = slim.conv2d(cnv3, 128, [3, 3], stride=2, scope='cnv4')
+        cnv5 = slim.conv2d(cnv4, 256, [3, 3], stride=2, scope='cnv5')
+
+        # Ego-motion specific layers
+        with tf.compat.v1.variable_scope('pose'):
+          cnv6 = slim.conv2d(cnv5, 256, [3, 3], stride=2, scope='cnv6')
+          cnv7 = slim.conv2d(cnv6, 256, [3, 3], stride=2, scope='cnv7')
+          pred_channels = EGOMOTION_VEC_SIZE * num_egomotion_vecs
+          egomotion_pred = slim.conv2d(cnv7,
+                                      pred_channels,
+                                      [1, 1],
+                                      scope='pred',
+                                      stride=1,
+                                      normalizer_fn=None,
+                                      activation_fn=None)
+
+          egomotion_avg = tf.reduce_mean(input_tensor=egomotion_pred, axis=[1, 2])
+          # Tinghui found that scaling by a small constant facilitates training.
+          egomotion_final = 0.01 * tf.reshape(
+              egomotion_avg, [-1, num_egomotion_vecs, EGOMOTION_VEC_SIZE])
+
+      elif ENABLE_EGO_NETWORK == 1:
+        cnv1a = slim.conv2d(image_stack, 16, [7, 7], stride=2, scope='cnv1a')
+        cnv1b = slim.conv2d(cnv1a, 16, [7, 7], stride=2, scope='cnv1b')
+        cnv2a = slim.conv2d(cnv1b, 32, [5, 5], stride=2, scope='cnv2a')
+        cnv2b = slim.conv2d(cnv2a, 32, [5, 5], stride=2, scope='cnv2b')
+        cnv3a = slim.conv2d(cnv2b, 64, [3, 3], stride=2, scope='cnv3a')
+        cnv3b = slim.conv2d(cnv3a, 64, [3, 3], stride=2, scope='cnv3b')
+        cnv4a = slim.conv2d(cnv3b, 128, [3, 3], stride=2, scope='cnv4a')
+        cnv4b = slim.conv2d(cnv4a, 128, [3, 3], stride=2, scope='cnv4b')
+        cnv5a = slim.conv2d(cnv4b, 256, [3, 3], stride=2, scope='cnv5a')
+        cnv5b = slim.conv2d(cnv5a, 256, [3, 3], stride=2, scope='cnv5b')
+
+        # Ego-motion specific layers
+        with tf.compat.v1.variable_scope('pose'):
+          cnv6 = slim.conv2d(cnv5b, 256, [3, 3], stride=2, scope='cnv6')
+          cnv7 = slim.conv2d(cnv6, 256, [3, 3], stride=2, scope='cnv7')
+          pred_channels = EGOMOTION_VEC_SIZE * num_egomotion_vecs
+          egomotion_pred = slim.conv2d(cnv7,
+                                      pred_channels,
+                                      [1, 1],
+                                      scope='pred',
+                                      stride=1,
+                                      normalizer_fn=None,
+                                      activation_fn=None)
+
+          egomotion_avg = tf.reduce_mean(input_tensor=egomotion_pred, axis=[1, 2])
+          # Tinghui found that scaling by a small constant facilitates training.
+          egomotion_final = 0.01 * tf.reshape(
+              egomotion_avg, [-1, num_egomotion_vecs, EGOMOTION_VEC_SIZE])
+
+      elif ENABLE_EGO_NETWORK == 2:               
+        cnv1 = slim.conv2d(image_stack, 16*2, [7, 7], stride=2, scope='cnv1')
+        cnv2 = slim.conv2d(cnv1, 32*2, [5, 5], stride=2, scope='cnv2')
+        cnv3 = slim.conv2d(cnv2, 64*2, [3, 3], stride=2, scope='cnv3')
+        cnv4 = slim.conv2d(cnv3, 128*2, [3, 3], stride=2, scope='cnv4')
+        cnv5 = slim.conv2d(cnv4, 256*2, [3, 3], stride=2, scope='cnv5')
+
+        # Ego-motion specific layers
+        with tf.compat.v1.variable_scope('pose'):
+          cnv6 = slim.conv2d(cnv5, 256*2, [3, 3], stride=2, scope='cnv6')
+          cnv7 = slim.conv2d(cnv6, 256*2, [3, 3], stride=2, scope='cnv7')
+          pred_channels = EGOMOTION_VEC_SIZE * num_egomotion_vecs
+          egomotion_pred = slim.conv2d(cnv7,
+                                      pred_channels,
+                                      [1, 1],
+                                      scope='pred',
+                                      stride=1,
+                                      normalizer_fn=None,
+                                      activation_fn=None)
+
+          egomotion_avg = tf.reduce_mean(input_tensor=egomotion_pred, axis=[1, 2])
+          # Tinghui found that scaling by a small constant facilitates training.
+          egomotion_final = 0.01 * tf.reshape(
+              egomotion_avg, [-1, num_egomotion_vecs, EGOMOTION_VEC_SIZE])
+      
+      elif ENABLE_EGO_NETWORK == 3:
+        
+        #image_stack = tf.image.resize(image_stack, [224,224])
         pred_channels = EGOMOTION_VEC_SIZE * num_egomotion_vecs
-        egomotion_pred = slim.conv2d(cnv7,
-                                     pred_channels,
-                                     [1, 1],
-                                     scope='pred',
-                                     stride=1,
-                                     normalizer_fn=None,
-                                     activation_fn=None)
-        egomotion_avg = tf.reduce_mean(input_tensor=egomotion_pred, axis=[1, 2])
-        # Tinghui found that scaling by a small constant facilitates training.
-        egomotion_final = 0.01 * tf.reshape(
-            egomotion_avg, [-1, num_egomotion_vecs, EGOMOTION_VEC_SIZE])
+        ego_resnet = resnet_v2_50(image_stack,
+                                  num_classes=pred_channels,
+                                  is_training=True,
+                                  global_pool=True,
+                                  output_stride=None,
+                                  spatial_squeeze=True,
+                                  reuse=None,
+                                  scope='resnet_v2_50')
+        
+        ego_resnet = tf.squeeze(ego_resnet)
+
+        model = tf.keras.models.Sequential()
+        model.add(tf.keras.Input(shape=(2048,)))
+        model.add(tf.keras.layers.Dense(1024, activation='relu'))
+        model.add(tf.keras.layers.Dense(256, activation='relu'))
+        model.add(tf.keras.layers.Dense(pred_channels, activation='relu'))
+        
+
+        # Ego-motion specific layers
+        with tf.compat.v1.variable_scope('pose'):
+          
+          egomotion_pred = model(ego_resnet)
+
+          egomotion_avg = tf.reduce_mean(input_tensor=egomotion_pred, axis=[1, 2])
+          # Tinghui found that scaling by a small constant facilitates training.
+          egomotion_final = 0.01 * tf.reshape(
+              egomotion_avg, [-1, num_egomotion_vecs, EGOMOTION_VEC_SIZE])
+
+
 
       end_points = slim.utils.convert_collection_to_dict(end_points_collection)
       return egomotion_final, end_points
@@ -131,71 +232,206 @@ def disp_net(target_image, is_training=True):
                         weights_regularizer=tf.keras.regularizers.l2(0.5 * (WEIGHT_REG)),
                         activation_fn=tf.nn.relu,
                         outputs_collections=end_points_collection):
-      cnv1 = slim.conv2d(inputs, 32, [7, 7], stride=2, scope='cnv1')
-      cnv1b = slim.conv2d(cnv1, 32, [7, 7], stride=1, scope='cnv1b')
-      cnv2 = slim.conv2d(cnv1b, 64, [5, 5], stride=2, scope='cnv2')
-      cnv2b = slim.conv2d(cnv2, 64, [5, 5], stride=1, scope='cnv2b')
 
-      cnv3 = slim.conv2d(cnv2b, 128, [3, 3], stride=2, scope='cnv3')
-      cnv3b = slim.conv2d(cnv3, 128, [3, 3], stride=1, scope='cnv3b')
-      cnv4 = slim.conv2d(cnv3b, 256, [3, 3], stride=2, scope='cnv4')
-      cnv4b = slim.conv2d(cnv4, 256, [3, 3], stride=1, scope='cnv4b')
-      cnv5 = slim.conv2d(cnv4b, 512, [3, 3], stride=2, scope='cnv5')
-      cnv5b = slim.conv2d(cnv5, 512, [3, 3], stride=1, scope='cnv5b')
-      cnv6 = slim.conv2d(cnv5b, 512, [3, 3], stride=2, scope='cnv6')
-      cnv6b = slim.conv2d(cnv6, 512, [3, 3], stride=1, scope='cnv6b')
-      cnv7 = slim.conv2d(cnv6b, 512, [3, 3], stride=2, scope='cnv7')
-      cnv7b = slim.conv2d(cnv7, 512, [3, 3], stride=1, scope='cnv7b')
+      if ENABLE_DISP_NETWORK == 0:
+        cnv1 = slim.conv2d(inputs, 32, [7, 7], stride=2, scope='cnv1')
+        cnv1b = slim.conv2d(cnv1, 32, [7, 7], stride=1, scope='cnv1b')
+        cnv2 = slim.conv2d(cnv1b, 64, [5, 5], stride=2, scope='cnv2')
+        cnv2b = slim.conv2d(cnv2, 64, [5, 5], stride=1, scope='cnv2b')
 
-      up7 = slim.conv2d_transpose(cnv7b, 512, [3, 3], stride=2, scope='upcnv7')
-      # There might be dimension mismatch due to uneven down/up-sampling.
-      up7 = _resize_like(up7, cnv6b)
-      i7_in = tf.concat([up7, cnv6b], axis=3)
-      icnv7 = slim.conv2d(i7_in, 512, [3, 3], stride=1, scope='icnv7')
+        cnv3 = slim.conv2d(cnv2b, 128, [3, 3], stride=2, scope='cnv3')
+        cnv3b = slim.conv2d(cnv3, 128, [3, 3], stride=1, scope='cnv3b')
+        cnv4 = slim.conv2d(cnv3b, 256, [3, 3], stride=2, scope='cnv4')
+        cnv4b = slim.conv2d(cnv4, 256, [3, 3], stride=1, scope='cnv4b')
+        cnv5 = slim.conv2d(cnv4b, 512, [3, 3], stride=2, scope='cnv5')
+        cnv5b = slim.conv2d(cnv5, 512, [3, 3], stride=1, scope='cnv5b')
+        cnv6 = slim.conv2d(cnv5b, 512, [3, 3], stride=2, scope='cnv6')
+        cnv6b = slim.conv2d(cnv6, 512, [3, 3], stride=1, scope='cnv6b')
+        cnv7 = slim.conv2d(cnv6b, 512, [3, 3], stride=2, scope='cnv7')
+        cnv7b = slim.conv2d(cnv7, 512, [3, 3], stride=1, scope='cnv7b')
 
-      up6 = slim.conv2d_transpose(icnv7, 512, [3, 3], stride=2, scope='upcnv6')
-      up6 = _resize_like(up6, cnv5b)
-      i6_in = tf.concat([up6, cnv5b], axis=3)
-      icnv6 = slim.conv2d(i6_in, 512, [3, 3], stride=1, scope='icnv6')
+        up7 = slim.conv2d_transpose(cnv7b, 512, [3, 3], stride=2, scope='upcnv7')
+        # There might be dimension mismatch due to uneven down/up-sampling.
+        up7 = _resize_like(up7, cnv6b)
+        i7_in = tf.concat([up7, cnv6b], axis=3)
+        icnv7 = slim.conv2d(i7_in, 512, [3, 3], stride=1, scope='icnv7')
 
-      up5 = slim.conv2d_transpose(icnv6, 256, [3, 3], stride=2, scope='upcnv5')
-      up5 = _resize_like(up5, cnv4b)
-      i5_in = tf.concat([up5, cnv4b], axis=3)
-      icnv5 = slim.conv2d(i5_in, 256, [3, 3], stride=1, scope='icnv5')
+        up6 = slim.conv2d_transpose(icnv7, 512, [3, 3], stride=2, scope='upcnv6')
+        up6 = _resize_like(up6, cnv5b)
+        i6_in = tf.concat([up6, cnv5b], axis=3)
+        icnv6 = slim.conv2d(i6_in, 512, [3, 3], stride=1, scope='icnv6')
 
-      up4 = slim.conv2d_transpose(icnv5, 128, [3, 3], stride=2, scope='upcnv4')
-      i4_in = tf.concat([up4, cnv3b], axis=3)
-      icnv4 = slim.conv2d(i4_in, 128, [3, 3], stride=1, scope='icnv4')
-      disp4 = (slim.conv2d(icnv4, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
-                           normalizer_fn=None, scope='disp4')
-               * DISP_SCALING + MIN_DISP)
-      disp4_up = tf.image.resize(disp4, [np.int(h / 4), np.int(w / 4)], method=tf.image.ResizeMethod.BILINEAR)
+        up5 = slim.conv2d_transpose(icnv6, 256, [3, 3], stride=2, scope='upcnv5')
+        up5 = _resize_like(up5, cnv4b)
+        i5_in = tf.concat([up5, cnv4b], axis=3)
+        icnv5 = slim.conv2d(i5_in, 256, [3, 3], stride=1, scope='icnv5')
 
-      up3 = slim.conv2d_transpose(icnv4, 64, [3, 3], stride=2, scope='upcnv3')
-      i3_in = tf.concat([up3, cnv2b, disp4_up], axis=3)
-      icnv3 = slim.conv2d(i3_in, 64, [3, 3], stride=1, scope='icnv3')
-      disp3 = (slim.conv2d(icnv3, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
-                           normalizer_fn=None, scope='disp3')
-               * DISP_SCALING + MIN_DISP)
-      disp3_up = tf.image.resize(disp3, [np.int(h / 2), np.int(w / 2)], method=tf.image.ResizeMethod.BILINEAR)
+        up4 = slim.conv2d_transpose(icnv5, 128, [3, 3], stride=2, scope='upcnv4')
+        i4_in = tf.concat([up4, cnv3b], axis=3)
+        icnv4 = slim.conv2d(i4_in, 128, [3, 3], stride=1, scope='icnv4')
+        disp4 = (slim.conv2d(icnv4, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp4')
+                * DISP_SCALING + MIN_DISP)
+        disp4_up = tf.image.resize(disp4, [np.int(h / 4), np.int(w / 4)], method=tf.image.ResizeMethod.BILINEAR)
 
-      up2 = slim.conv2d_transpose(icnv3, 32, [3, 3], stride=2, scope='upcnv2')
-      i2_in = tf.concat([up2, cnv1b, disp3_up], axis=3)
-      icnv2 = slim.conv2d(i2_in, 32, [3, 3], stride=1, scope='icnv2')
-      disp2 = (slim.conv2d(icnv2, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
-                           normalizer_fn=None, scope='disp2')
-               * DISP_SCALING + MIN_DISP)
-      disp2_up = tf.image.resize(disp2, [h, w], method=tf.image.ResizeMethod.BILINEAR)
+        up3 = slim.conv2d_transpose(icnv4, 64, [3, 3], stride=2, scope='upcnv3')
+        i3_in = tf.concat([up3, cnv2b, disp4_up], axis=3)
+        icnv3 = slim.conv2d(i3_in, 64, [3, 3], stride=1, scope='icnv3')
+        disp3 = (slim.conv2d(icnv3, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp3')
+                * DISP_SCALING + MIN_DISP)
+        disp3_up = tf.image.resize(disp3, [np.int(h / 2), np.int(w / 2)], method=tf.image.ResizeMethod.BILINEAR)
 
-      up1 = slim.conv2d_transpose(icnv2, 16, [3, 3], stride=2, scope='upcnv1')
-      i1_in = tf.concat([up1, disp2_up], axis=3)
-      icnv1 = slim.conv2d(i1_in, 16, [3, 3], stride=1, scope='icnv1')
-      disp1 = (slim.conv2d(icnv1, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
-                           normalizer_fn=None, scope='disp1')
-               * DISP_SCALING + MIN_DISP)
+        up2 = slim.conv2d_transpose(icnv3, 32, [3, 3], stride=2, scope='upcnv2')
+        i2_in = tf.concat([up2, cnv1b, disp3_up], axis=3)
+        icnv2 = slim.conv2d(i2_in, 32, [3, 3], stride=1, scope='icnv2')
+        disp2 = (slim.conv2d(icnv2, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp2')
+                * DISP_SCALING + MIN_DISP)
+        disp2_up = tf.image.resize(disp2, [h, w], method=tf.image.ResizeMethod.BILINEAR)
 
-      end_points = slim.utils.convert_collection_to_dict(end_points_collection)
-      return [disp1, disp2, disp3, disp4], end_points
+        up1 = slim.conv2d_transpose(icnv2, 16, [3, 3], stride=2, scope='upcnv1')
+        i1_in = tf.concat([up1, disp2_up], axis=3)
+        icnv1 = slim.conv2d(i1_in, 16, [3, 3], stride=1, scope='icnv1')
+        disp1 = (slim.conv2d(icnv1, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp1')
+                * DISP_SCALING + MIN_DISP)
+
+        end_points = slim.utils.convert_collection_to_dict(end_points_collection)
+        return [disp1, disp2, disp3, disp4], end_points
+      elif ENABLE_DISP_NETWORK == 1:
+        cnv1 = slim.conv2d(inputs, 32, [7, 7], stride=2, scope='cnv1')
+        cnv1b = slim.conv2d(cnv1, 32, [7, 7], stride=1, scope='cnv1b')
+        cnv2 = slim.conv2d(cnv1b, 64, [5, 5], stride=2, scope='cnv2')
+        cnv2b = slim.conv2d(cnv2, 64, [5, 5], stride=1, scope='cnv2b')
+
+        cnv3 = slim.conv2d(cnv2b, 128, [3, 3], stride=2, scope='cnv3')
+        cnv3b = slim.conv2d(cnv3, 128, [3, 3], stride=1, scope='cnv3b')
+        cnv4 = slim.conv2d(cnv3b, 256, [3, 3], stride=2, scope='cnv4')
+        cnv4b = slim.conv2d(cnv4, 256, [3, 3], stride=1, scope='cnv4b')
+        cnv5 = slim.conv2d(cnv4b, 512, [3, 3], stride=2, scope='cnv5')
+        cnv5b = slim.conv2d(cnv5, 512, [3, 3], stride=1, scope='cnv5b')
+        cnv6 = slim.conv2d(cnv5b, 512, [3, 3], stride=2, scope='cnv6')
+        cnv6b = slim.conv2d(cnv6, 512, [3, 3], stride=1, scope='cnv6b')
+        cnv7 = slim.conv2d(cnv6b, 512, [3, 3], stride=2, scope='cnv7')
+        cnv7b = slim.conv2d(cnv7, 512, [3, 3], stride=1, scope='cnv7b')
+
+        up7 = slim.conv2d_transpose(cnv7b, 512, [3, 3], stride=2, scope='upcnv7')
+        # There might be dimension mismatch due to uneven down/up-sampling.
+        up7 = _resize_like(up7, cnv6b)
+        i7_in = tf.concat([up7, cnv6b], axis=3)
+        icnv7 = slim.conv2d(i7_in, 512, [3, 3], stride=1, scope='icnv7')
+
+        up6 = slim.conv2d_transpose(icnv7, 512, [3, 3], stride=2, scope='upcnv6')
+        up6 = _resize_like(up6, cnv5b)
+        i6_in = tf.concat([up6, cnv5b], axis=3)
+        icnv6 = slim.conv2d(i6_in, 512, [3, 3], stride=1, scope='icnv6')
+
+        up5 = slim.conv2d_transpose(icnv6, 256, [3, 3], stride=2, scope='upcnv5')
+        up5 = _resize_like(up5, cnv4b)
+        i5_in = tf.concat([up5, cnv4b], axis=3)
+        icnv5 = slim.conv2d(i5_in, 256, [3, 3], stride=1, scope='icnv5')
+
+        up4 = slim.conv2d_transpose(icnv5, 128, [3, 3], stride=2, scope='upcnv4')
+        i4_in = tf.concat([up4, cnv3b], axis=3)
+        icnv4 = slim.conv2d(i4_in, 128, [3, 3], stride=1, scope='icnv4')
+        disp4 = (slim.conv2d(icnv4, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp4')
+                * DISP_SCALING + MIN_DISP)
+        disp4_up = tf.image.resize(disp4, [np.int(h / 4), np.int(w / 4)], method=tf.image.ResizeMethod.BILINEAR)
+
+        up3 = slim.conv2d_transpose(icnv4, 64, [3, 3], stride=2, scope='upcnv3')
+        i3_in = tf.concat([up3, cnv2b, disp4_up], axis=3)
+        icnv3 = slim.conv2d(i3_in, 64, [3, 3], stride=1, scope='icnv3')
+        disp3 = (slim.conv2d(icnv3, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp3')
+                * DISP_SCALING + MIN_DISP)
+        disp3_up = tf.image.resize(disp3, [np.int(h / 2), np.int(w / 2)], method=tf.image.ResizeMethod.BILINEAR)
+
+        up2 = slim.conv2d_transpose(icnv3, 32, [3, 3], stride=2, scope='upcnv2')
+        i2_in = tf.concat([up2, cnv1b, disp3_up], axis=3)
+        icnv2 = slim.conv2d(i2_in, 32, [3, 3], stride=1, scope='icnv2')
+        disp2 = (slim.conv2d(icnv2, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp2')
+                * DISP_SCALING + MIN_DISP)
+        disp2_up = tf.image.resize(disp2, [h, w], method=tf.image.ResizeMethod.BILINEAR)
+
+        up1 = slim.conv2d_transpose(icnv2, 16, [3, 3], stride=2, scope='upcnv1')
+        i1_in = tf.concat([up1, disp2_up], axis=3)
+        icnv1 = slim.conv2d(i1_in, 16, [3, 3], stride=1, scope='icnv1')
+        disp1 = (slim.conv2d(icnv1, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp1')
+                * DISP_SCALING + MIN_DISP)
+
+        end_points = slim.utils.convert_collection_to_dict(end_points_collection)
+        return [disp1, disp2, disp3, disp4], end_points
+
+      elif ENABLE_DISP_NETWORK == 2:
+        cnv1 = slim.conv2d(inputs, 64, [7, 7], stride=2, scope='cnv1')
+        cnv1b = slim.conv2d(cnv1, 64, [7, 7], stride=1, scope='cnv1b')
+        cnv2 = slim.conv2d(cnv1b, 128, [5, 5], stride=2, scope='cnv2')
+        cnv2b = slim.conv2d(cnv2, 128, [5, 5], stride=1, scope='cnv2b')
+
+        cnv3 = slim.conv2d(cnv2b, 256, [3, 3], stride=2, scope='cnv3')
+        cnv3b = slim.conv2d(cnv3, 256, [3, 3], stride=1, scope='cnv3b')
+        cnv4 = slim.conv2d(cnv3b, 512, [3, 3], stride=2, scope='cnv4')
+        cnv4b = slim.conv2d(cnv4, 512, [3, 3], stride=1, scope='cnv4b')
+        cnv5 = slim.conv2d(cnv4b, 1024, [3, 3], stride=2, scope='cnv5')
+        cnv5b = slim.conv2d(cnv5, 1024, [3, 3], stride=1, scope='cnv5b')
+        cnv6 = slim.conv2d(cnv5b, 1024, [3, 3], stride=2, scope='cnv6')
+        cnv6b = slim.conv2d(cnv6, 1024, [3, 3], stride=1, scope='cnv6b')
+        cnv7 = slim.conv2d(cnv6b, 1024, [3, 3], stride=2, scope='cnv7')
+        cnv7b = slim.conv2d(cnv7, 1024, [3, 3], stride=1, scope='cnv7b')
+
+        up7 = slim.conv2d_transpose(cnv7b, 1024, [3, 3], stride=2, scope='upcnv7')
+        # There might be dimension mismatch due to uneven down/up-sampling.
+        up7 = _resize_like(up7, cnv6b)
+        i7_in = tf.concat([up7, cnv6b], axis=3)
+        icnv7 = slim.conv2d(i7_in, 1024, [3, 3], stride=1, scope='icnv7')
+
+        up6 = slim.conv2d_transpose(icnv7, 1024, [3, 3], stride=2, scope='upcnv6')
+        up6 = _resize_like(up6, cnv5b)
+        i6_in = tf.concat([up6, cnv5b], axis=3)
+        icnv6 = slim.conv2d(i6_in, 1024, [3, 3], stride=1, scope='icnv6')
+
+        up5 = slim.conv2d_transpose(icnv6, 512, [3, 3], stride=2, scope='upcnv5')
+        up5 = _resize_like(up5, cnv4b)
+        i5_in = tf.concat([up5, cnv4b], axis=3)
+        icnv5 = slim.conv2d(i5_in, 512, [3, 3], stride=1, scope='icnv5')
+
+        up4 = slim.conv2d_transpose(icnv5, 256, [3, 3], stride=2, scope='upcnv4')
+        i4_in = tf.concat([up4, cnv3b], axis=3)
+        icnv4 = slim.conv2d(i4_in, 256, [3, 3], stride=1, scope='icnv4')
+        disp4 = (slim.conv2d(icnv4, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp4')
+                * DISP_SCALING + MIN_DISP)
+        disp4_up = tf.image.resize(disp4, [np.int(h / 4), np.int(w / 4)], method=tf.image.ResizeMethod.BILINEAR)
+
+        up3 = slim.conv2d_transpose(icnv4, 128, [3, 3], stride=2, scope='upcnv3')
+        i3_in = tf.concat([up3, cnv2b, disp4_up], axis=3)
+        icnv3 = slim.conv2d(i3_in, 128, [3, 3], stride=1, scope='icnv3')
+        disp3 = (slim.conv2d(icnv3, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp3')
+                * DISP_SCALING + MIN_DISP)
+        disp3_up = tf.image.resize(disp3, [np.int(h / 2), np.int(w / 2)], method=tf.image.ResizeMethod.BILINEAR)
+
+        up2 = slim.conv2d_transpose(icnv3, 64, [3, 3], stride=2, scope='upcnv2')
+        i2_in = tf.concat([up2, cnv1b, disp3_up], axis=3)
+        icnv2 = slim.conv2d(i2_in, 64, [3, 3], stride=1, scope='icnv2')
+        disp2 = (slim.conv2d(icnv2, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp2')
+                * DISP_SCALING + MIN_DISP)
+        disp2_up = tf.image.resize(disp2, [h, w], method=tf.image.ResizeMethod.BILINEAR)
+
+        up1 = slim.conv2d_transpose(icnv2, 32, [3, 3], stride=2, scope='upcnv1')
+        i1_in = tf.concat([up1, disp2_up], axis=3)
+        icnv1 = slim.conv2d(i1_in, 32, [3, 3], stride=1, scope='icnv1')
+        disp1 = (slim.conv2d(icnv1, 1, [3, 3], stride=1, activation_fn=tf.sigmoid,
+                            normalizer_fn=None, scope='disp1')
+                * DISP_SCALING + MIN_DISP)
+
+        end_points = slim.utils.convert_collection_to_dict(end_points_collection)
+        return [disp1, disp2, disp3, disp4], end_points
 
 
 def _resize_like(inputs, ref):

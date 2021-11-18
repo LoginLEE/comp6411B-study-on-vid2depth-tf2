@@ -58,6 +58,7 @@ DEFAULT_KITTI_DIR = os.path.join(HOME_DIR, 'kitti-raw-uncompressed')
 flags.DEFINE_string('output_dir', DEFAULT_OUTPUT_DIR,
                     'Directory to store estimated depth maps.')
 flags.DEFINE_string('kitti_dir', DEFAULT_KITTI_DIR, 'KITTI dataset directory.')
+flags.DEFINE_string('output_file', None, 'Inference prediction file')
 flags.DEFINE_string('model_ckpt', None, 'Model checkpoint to load.')
 flags.DEFINE_string('kitti_video', None, 'KITTI video directory name.')
 flags.DEFINE_integer('batch_size', 4, 'The size of a sample batch.')
@@ -93,13 +94,16 @@ def _run_inference():
     saver.restore(sess, FLAGS.model_ckpt)
     if FLAGS.kitti_video == 'test_files_eigen':
       im_files = util.read_text_lines(
-          util.get_resource_path('dataset/kitti/test_files_eigen.txt'))
+        "./dataset/kitti/test_files_eigen.txt"
+         )
       im_files = [os.path.join(FLAGS.kitti_dir, f) for f in im_files]
     else:
       video_path = os.path.join(FLAGS.kitti_dir, FLAGS.kitti_video)
       im_files = gfile.glob(os.path.join(video_path, 'image_02/data', '*.png'))
       im_files = [f for f in im_files if 'disp' not in f]
       im_files = sorted(im_files)
+    pred_all=[]
+    print(len(im_files))
     for i in range(0, len(im_files), FLAGS.batch_size):
       if i % 100 == 0:
         logging.info('Generating from %s: %d/%d', ckpt_basename, i,
@@ -124,6 +128,7 @@ def _run_inference():
           depth_path = os.path.join(output_dir, '%04d.png' % idx)
 
         depth_map = results['depth'][b]
+        pred_all.append(results['depth'][b,:,:,0])
         depth_map = np.squeeze(depth_map)
         colored_map = _normalize_depth_for_display(depth_map, cmap=CMAP)
         imageio.imsave(depth_path, colored_map)
@@ -134,6 +139,9 @@ def _run_inference():
         #input_float = inputs[b].astype(np.float32) / 255.0
         #vertical_stack = np.concatenate((input_float, colored_map), axis=0)
         #scipy.misc.imsave(depth_path, vertical_stack)
+    print(FLAGS.output_file)
+    if FLAGS.output_file:
+      np.save(FLAGS.output_file, pred_all)
 
 
 def _gray2rgb(im, cmap=CMAP):

@@ -1,0 +1,10 @@
+
+checkpoints_*/
+.ipynb_checkpoints/
+.vscode/
+__pycache__/
+data/
+inference/
+trained-model/
+tensorflow26/
+tmp/
